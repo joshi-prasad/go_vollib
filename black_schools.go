@@ -1,9 +1,16 @@
-package bs
+package go_vollib
 
 import (
+	"fmt"
 	"math"
 
+	"github.com/golang/glog"
 	"gonum.org/v1/gonum/stat/distuv"
+)
+
+const (
+	MaxIterations = 100
+	Tolerance     = 1e-6
 )
 
 type BlackSchools struct {
@@ -30,6 +37,7 @@ type BlackSchools struct {
 
 func NewBlackSchools(
 	is_call_option bool,
+	option_price float64,
 	underlying_asset_price float64,
 	strike_price int64,
 	annulized_volatility float64,
@@ -42,7 +50,7 @@ func NewBlackSchools(
 		AnnulizedVolatility:  annulized_volatility,
 		TimeToExpiryInYear:   time_to_expiry_in_year,
 		InterestRate:         interest_rate,
-		Price:                0,
+		Price:                option_price,
 		Delta:                0,
 		Gamma:                0,
 		Vega:                 0,
@@ -54,17 +62,78 @@ func NewBlackSchools(
 		_sqrt_t:              math.Sqrt(time_to_expiry_in_year),
 		_deflater:            0,
 	}
-	bs._a = bs.a(annulized_volatility)
+
 	bs._deflater = bs.deflater()
+	if annulized_volatility == 0 {
+		if bs.Price == 0 {
+			glog.Fatal("Both Sigma and Price cannot be zero.")
+			return nil
+		}
+		var err error
+		annulized_volatility, err = bs.computeIv()
+		if err != nil {
+			glog.Fatal("Failed to converge IV")
+			return nil
+		}
+	}
+	if annulized_volatility == 0 {
+		glog.Fatal("Failed to converge IV")
+		return nil
+	}
+
+	bs.AnnulizedVolatility = annulized_volatility
+	bs._a = bs.a(annulized_volatility)
 	bs._d1 = bs.d1(annulized_volatility)
 	bs._d2 = bs.d2(bs._d1, annulized_volatility)
-	bs.Price = bs.price()
+	if bs.Price == 0 {
+		bs.Price = bs.price()
+	}
+	return bs
+}
+
+func (bs *BlackSchools) ComputeGreeks() {
 	bs.Delta = bs.delta()
 	bs.Gamma = bs.gamma()
 	bs.Vega = bs.vega()
 	bs.Theta = bs.theta()
 	bs.Rho = bs.rho()
-	return bs
+}
+
+func (bs *BlackSchools) computeIv() (float64, error) {
+	lowVol := 0.0
+	highVol := 5.0
+
+	// Implement the Black-Scholes formula
+	bsFormula := func(sigma float64) float64 {
+		tmpBs := NewBlackSchools(
+			bs.IsCallOption,
+			0 /* option_price */,
+			bs.UnderlyingAssesPrice,
+			int64(bs.StrikePrice),
+			sigma,
+			bs.TimeToExpiryInYear,
+			bs.InterestRate)
+		return tmpBs.Price
+	}
+
+	// Perform a binary search to find the IV
+	for i := 0; i < MaxIterations; i++ {
+		midVol := (lowVol + highVol) / 2
+		bsPrice := bsFormula(midVol)
+		diff := bsPrice - bs.Price
+
+		if math.Abs(diff) < Tolerance {
+			return midVol, nil
+		}
+
+		if diff < 0 {
+			lowVol = midVol
+		} else {
+			highVol = midVol
+		}
+	}
+
+	return 0, fmt.Errorf("IV calculation did not converge")
 }
 
 func (bs *BlackSchools) price() float64 {
@@ -249,8 +318,3 @@ func (bs *BlackSchools) deflater() float64 {
 	// appreciate in value, and therefore is worth more today.
 	return math.Exp(-bs.InterestRate * bs.TimeToExpiryInYear)
 }
-
-// func main() {
-// 	bs := NewBlackSchools(true, 30.0, 40.0, 0.30, 240.0/365.0, 0.01)
-// 	fmt.Println(bs.Price, bs.Delta, bs.Gamma, bs.Vega, bs.Theta, bs.Rho)
-// }
