@@ -10,7 +10,7 @@ import (
 
 const (
 	MaxIterations = 100
-	Tolerance     = 1e-6
+	Tolerance     = 1e-9
 )
 
 type BlackSchools struct {
@@ -116,13 +116,23 @@ func (bs *BlackSchools) computeIv() (float64, error) {
 		return tmpBs.Price
 	}
 
+	zeroIntDiffCount := 0
 	// Perform a binary search to find the IV
 	for i := 0; i < MaxIterations; i++ {
-		midVol := (lowVol + highVol) / 2
+		midVol := (lowVol + highVol) / 2.0
 		bsPrice := bsFormula(midVol)
 		diff := bsPrice - bs.Price
 
-		if math.Abs(diff) < Tolerance {
+		absDiff := math.Abs(diff)
+		dd, _ := math.Modf(absDiff)
+		//fmt.Println(bs.Price, bsPrice, midVol, dd)
+		if dd <= 0 {
+			zeroIntDiffCount += 1
+			if zeroIntDiffCount >= 2 {
+				return midVol, nil
+			}
+		}
+		if absDiff <= Tolerance {
 			return midVol, nil
 		}
 
