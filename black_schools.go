@@ -101,7 +101,7 @@ func (bs *BlackSchools) ComputeGreeks() {
 
 func (bs *BlackSchools) computeIv() (float64, error) {
 	lowVol := 0.0
-	highVol := 5.0
+	highVol := 100.0
 
 	// Implement the Black-Scholes formula
 	bsFormula := func(sigma float64) float64 {
