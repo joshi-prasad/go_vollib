@@ -72,12 +72,12 @@ func NewBlackSchools(
 		var err error
 		annulized_volatility, err = bs.computeIv()
 		if err != nil {
-			glog.Fatal("Failed to converge IV")
+			glog.Error("Failed to converge IV")
 			return nil
 		}
 	}
 	if annulized_volatility == 0 {
-		glog.Fatal("Failed to converge IV")
+		glog.Error("Failed to converge IV")
 		return nil
 	}
 
